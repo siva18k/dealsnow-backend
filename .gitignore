@@ -1,0 +1,51 @@
+# CDK
+cdk.out/
+*.js
+*.d.ts
+node_modules/
+
+# Lambda
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build
+dist/
+build/
+*.zip
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Misc
+.cache/
+temp/
+tmp/
