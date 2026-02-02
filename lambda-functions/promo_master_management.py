@@ -1,20 +1,36 @@
 import os
 import json
 import pg8000
+import boto3
 from decimal import Decimal
 from datetime import datetime, date
 
 def get_db_connection():
+    """Connect via AWS Secrets Manager (Aurora PostgreSQL) or DB_* env. Port 5432 for Aurora."""
     try:
-        conn = pg8000.connect(
-            host=os.environ.get('DB_HOST'),
-            database=os.environ.get('DB_NAME'),
-            user=os.environ.get('DB_USER'),
-            password=os.environ.get('DB_PASSWORD'),
-            port=int(os.environ.get('DB_PORT', 5432))
-        )
-        return conn
+        secret_name = os.environ.get('DB_SECRET_NAME') or os.environ.get('DB_SECRET_ARN')
+        if secret_name:
+            client = boto3.client('secretsmanager')
+            r = client.get_secret_value(SecretId=secret_name)
+            cred = json.loads(r['SecretString'])
+            return pg8000.connect(
+                host=cred.get('host') or cred.get('endpoint'),
+                port=int(cred.get('port', 5432)),
+                database=cred.get('dbname') or cred.get('database') or 'postgres',
+                user=cred.get('username') or cred.get('user'),
+                password=cred.get('password')
+            )
+        if all([os.environ.get('DB_HOST'), os.environ.get('DB_USER'), os.environ.get('DB_PASSWORD')]):
+            return pg8000.connect(
+                host=os.environ.get('DB_HOST'),
+                database=os.environ.get('DB_NAME') or 'postgres',
+                user=os.environ.get('DB_USER'),
+                password=os.environ.get('DB_PASSWORD'),
+                port=int(os.environ.get('DB_PORT', 5432))
+            )
+        return None
     except Exception as e:
+        print(f"Database connection error: {e}")
         return None
 
 class CustomEncoder(json.JSONEncoder):

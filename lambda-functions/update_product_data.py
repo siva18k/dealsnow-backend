@@ -4,8 +4,9 @@ import sys
 import time
 from datetime import datetime
 import pg8000
+import boto3
 
-# Database configuration
+# Database configuration (env fallback when not using Secrets Manager)
 DB_HOST = os.environ.get('DB_HOST')
 DB_NAME = os.environ.get('DB_NAME')
 DB_USER = os.environ.get('DB_USER')
@@ -23,21 +24,30 @@ def clean_text_field(text):
     return text
 
 def get_db_connection():
-    """Establishes a database connection."""
+    """Connect via AWS Secrets Manager (Aurora PostgreSQL) or DB_* env. Port 5432 for Aurora."""
     try:
-        # Check if we have all required database parameters
-        if not all([DB_HOST, DB_NAME, DB_USER, DB_PASSWORD]):
-            print("Missing required database configuration parameters")
+        secret_name = os.environ.get('DB_SECRET_NAME') or os.environ.get('DB_SECRET_ARN')
+        if secret_name:
+            client = boto3.client('secretsmanager')
+            r = client.get_secret_value(SecretId=secret_name)
+            cred = json.loads(r['SecretString'])
+            return pg8000.connect(
+                host=cred.get('host') or cred.get('endpoint'),
+                port=int(cred.get('port', 5432)),
+                database=cred.get('dbname') or cred.get('database') or 'postgres',
+                user=cred.get('username') or cred.get('user'),
+                password=cred.get('password')
+            )
+        if not all([DB_HOST, DB_USER, DB_PASSWORD]):
+            print("Missing required database configuration (DB_SECRET_NAME or DB_HOST/DB_USER/DB_PASSWORD)")
             return None
-            
-        conn = pg8000.connect(
+        return pg8000.connect(
             host=DB_HOST,
-            database=DB_NAME,
+            database=DB_NAME or 'postgres',
             user=DB_USER,
             password=DB_PASSWORD,
             port=DB_PORT
         )
-        return conn
     except pg8000.Error as e:
         print(f"Database connection error: {e}")
         return None

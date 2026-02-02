@@ -6,15 +6,10 @@ import boto3
 from botocore.config import Config
 import datetime  # Import datetime module for serialization
 
-# Database configuration
-DB_HOST = os.environ.get('DB_HOST')
-DB_NAME = os.environ.get('DB_NAME')
-DB_USER = os.environ.get('DB_USER')
-DB_PASSWORD = os.environ.get('DB_PASSWORD')
-
 # AWS configuration
 AWS_REGION = 'us-east-2'
 BEDROCK_MODEL_ID = 'amazon.titan-embed-text-v2:0'
+secrets_client = boto3.client('secretsmanager', region_name=AWS_REGION)
 
 # Custom JSON encoder to handle datetime objects
 class DateTimeEncoder(json.JSONEncoder):
@@ -52,16 +47,34 @@ def format_results(cur, products):
     return results
 
 def get_db_connection():
-    """Create database connection"""
+    """Create database connection via Secrets Manager or env (DB_SECRET_NAME from CDK)."""
     try:
-        conn = pg8000.connect(
-            host=DB_HOST,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            port=5432
-        )
-        return conn
+        secret_name = os.environ.get('DB_SECRET_NAME')
+        if secret_name:
+            secret_response = secrets_client.get_secret_value(SecretId=secret_name)
+            credentials = json.loads(secret_response['SecretString'])
+            db_host = credentials.get('host') or credentials.get('endpoint')
+            db_port = int(credentials.get('port', 5432))
+            db_name = credentials.get('dbname') or credentials.get('database') or 'postgres'
+            db_user = credentials.get('username') or credentials.get('user')
+            db_pass = credentials.get('password')
+            conn = pg8000.connect(
+                host=db_host,
+                port=db_port,
+                database=db_name,
+                user=db_user,
+                password=db_pass
+            )
+            return conn
+        if os.environ.get('DB_HOST') or os.environ.get('PG_HOST'):
+            host = os.environ.get('DB_HOST') or os.environ.get('PG_HOST')
+            database = os.environ.get('DB_NAME') or os.environ.get('PG_DATABASE') or 'postgres'
+            user = os.environ.get('DB_USER') or os.environ.get('PG_USER')
+            password = os.environ.get('DB_PASSWORD') or os.environ.get('PG_PASSWORD')
+            port = int(os.environ.get('DB_PORT', os.environ.get('PG_PORT', 5432)))
+            return pg8000.connect(host=host, database=database, user=user, password=password, port=port)
+        print("Database connection: DB_SECRET_NAME or DB_HOST/PG_* not set")
+        return None
     except pg8000.Error as e:
         print(f"Database connection error: {e}")
         return None

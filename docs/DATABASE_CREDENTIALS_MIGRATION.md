@@ -14,20 +14,21 @@ All DealsNow applications must use AWS Secrets Manager for database credentials 
 **Secret Name**: `prod/dealsnow_india/aurora_db`
 **Region**: `ap-south-1`
 
-## Secret Structure
+## Secret Structure (AWS Aurora PostgreSQL)
 
-Each secret contains the following JSON structure:
+Each secret contains the following JSON structure. All Lambdas use **port 5432** (Aurora PostgreSQL standard) and **dbname** or **database** (default `postgres` if missing):
+
 ```json
 {
   "username": "postgres_user",
   "password": "secure_password",
-  "engine": "postgres",
-  "host": "database-host.region.rds.amazonaws.com",
+  "host": "your-cluster.cluster-xxxxx.region.rds.amazonaws.com",
   "port": 5432,
-  "dbname": "dealsnow_db",
-  "dbClusterIdentifier": "cluster-name"
+  "dbname": "postgres"
 }
 ```
+
+Optional keys: `endpoint` (same as host), `database` (same as dbname). Old RDS keys like `dbInstanceIdentifier` or `dbClusterIdentifier` are not used by the Lambdas.
 
 ## Lambda Function Updates
 

@@ -127,7 +127,7 @@ def get_database_connection():
         credentials = json.loads(secret_response['SecretString'])
         
         db_host = credentials.get('host') or credentials.get('endpoint')
-        db_port = int(credentials.get('port', 1369)) # Default to 1369 as seen in secret
+        db_port = int(credentials.get('port', 5432))  # Aurora PostgreSQL standard port
         db_name = credentials.get('dbname') or credentials.get('database') or 'postgres'
         db_user = credentials.get('username') or credentials.get('user')
         db_pass = credentials.get('password')

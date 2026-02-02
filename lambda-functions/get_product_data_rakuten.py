@@ -16,10 +16,10 @@ ENDPOINT = f"https://{HOST}/productsearch/1.0"
 
 DB_CONFIG = {
     'host': os.environ.get('DB_HOST'),
-    'database': os.environ.get('DB_NAME'),
+    'database': os.environ.get('DB_NAME') or 'postgres',
     'user': os.environ.get('DB_USER'),
     'password': os.environ.get('DB_PASSWORD'),
-    'port': int(os.environ.get('DB_PORT', 5432))
+    'port': int(os.environ.get('DB_PORT', 5432))  # Aurora PostgreSQL standard port
 }
 
 DEFAULT_CATEGORIES = [
@@ -37,9 +37,23 @@ DEFAULT_MERCHANTS = [
 
 
 def get_db_connection():
+    """Connect via AWS Secrets Manager (Aurora PostgreSQL) or DB_* env. Port 5432 for Aurora."""
     try:
-        if not all(DB_CONFIG.values()):
-            raise ValueError("Missing database configuration parameters")
+        secret_name = os.environ.get('DB_SECRET_NAME') or os.environ.get('DB_SECRET_ARN')
+        if secret_name:
+            db_region = os.environ.get('AWS_REGION', 'us-east-2')  # Aurora secret region
+            client = boto3.client('secretsmanager', region_name=db_region)
+            r = client.get_secret_value(SecretId=secret_name)
+            cred = json.loads(r['SecretString'])
+            return pg8000.connect(
+                host=cred.get('host') or cred.get('endpoint'),
+                port=int(cred.get('port', 5432)),
+                database=cred.get('dbname') or cred.get('database') or 'postgres',
+                user=cred.get('username') or cred.get('user'),
+                password=cred.get('password')
+            )
+        if not all([DB_CONFIG['host'], DB_CONFIG['user'], DB_CONFIG['password']]):
+            raise ValueError("Missing database configuration (DB_SECRET_NAME or DB_HOST/DB_USER/DB_PASSWORD)")
         return pg8000.connect(**DB_CONFIG)
     except Exception as e:
         print(f"Database connection error: {str(e)}")

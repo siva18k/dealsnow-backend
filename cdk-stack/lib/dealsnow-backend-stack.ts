@@ -151,8 +151,8 @@ export class DealsNowBackendStack extends cdk.Stack {
     const productManagementFn = createFunction(
       'ProductManagementFunction',
       'product-management',
-      'lambda-products-management.lambda_handler',
-      'Product CRUD operations with authentication',
+      'product_management.lambda_handler',
+      'Product CRUD operations (GET/POST products_management)',
       90,
       512
     );
@@ -191,6 +191,18 @@ export class DealsNowBackendStack extends cdk.Stack {
       'Daily promotional product updates',
       180,
       512
+    );
+
+    // Postgres to S3 dump (sync products/promos to S3 for app and web)
+    // DB_NAME overrides secret (Aurora secret may have wrong dbname e.g. dealsnow_prod); use postgres default
+    const postgresToS3DumpFn = createFunction(
+      'PostgresToS3DumpFunction',
+      'postgres-to-s3-dump',
+      'dump_products_to_s3.lambda_handler',
+      'Dump Postgres product/promo data to S3 (Sync to S3)',
+      900, // 15 min - dump can be long
+      1024,
+      { DB_NAME: 'postgres' }
     );
 
     // External API Integrations
@@ -279,6 +291,22 @@ export class DealsNowBackendStack extends cdk.Stack {
     amazonProducts.addMethod('GET', new apigateway.LambdaIntegration(amazonFn));
     amazonProducts.addMethod('POST', new apigateway.LambdaIntegration(amazonFn));
 
+    // CORS on Gateway error responses (4xx/5xx) so browser allows frontend to see error.
+    // Values must be single-quoted literals for API Gateway mapping (commas otherwise invalid).
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': "'*'",
+      'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Api-Key,X-Country-Code,X-Amz-Date,X-Amz-Security-Token'",
+      'Access-Control-Allow-Methods': "'GET,POST,OPTIONS'",
+    };
+    mainApi.addGatewayResponse('Default4XX', {
+      type: apigateway.ResponseType.DEFAULT_4XX,
+      responseHeaders: corsHeaders,
+    });
+    mainApi.addGatewayResponse('Default5XX', {
+      type: apigateway.ResponseType.DEFAULT_5XX,
+      responseHeaders: corsHeaders,
+    });
+
     // ========================================================================
     // 7. API GATEWAY - STAGING/UPDATE API
     // ========================================================================
@@ -330,6 +358,25 @@ export class DealsNowBackendStack extends cdk.Stack {
     // /get_product_data_rakuten
     const rakuten = stagingApi.root.addResource('get_product_data_rakuten');
     rakuten.addMethod('POST', new apigateway.LambdaIntegration(rakutenFn));
+
+    // /postgres_to_s3_dump - Sync DB to S3 (used by DealsAdmin S3 Sync)
+    const postgresToS3Dump = stagingApi.root.addResource('postgres_to_s3_dump');
+    postgresToS3Dump.addMethod('POST', new apigateway.LambdaIntegration(postgresToS3DumpFn));
+
+    // CORS on staging API Gateway error responses (4xx/5xx)
+    const stagingCorsHeaders = {
+      'Access-Control-Allow-Origin': "'*'",
+      'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Api-Key,X-Country-Code,X-Amz-Date,X-Amz-Security-Token'",
+      'Access-Control-Allow-Methods': "'GET,POST,OPTIONS'",
+    };
+    stagingApi.addGatewayResponse('StagingDefault4XX', {
+      type: apigateway.ResponseType.DEFAULT_4XX,
+      responseHeaders: stagingCorsHeaders,
+    });
+    stagingApi.addGatewayResponse('StagingDefault5XX', {
+      type: apigateway.ResponseType.DEFAULT_5XX,
+      responseHeaders: stagingCorsHeaders,
+    });
 
     // ========================================================================
     // 8. OUTPUTS
